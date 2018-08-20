@@ -1,0 +1,330 @@
+﻿@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<form class="layui-form">
+    <blockquote class="layui-elem-quote quoteBox">
+        <div class="layui-inline">
+            办理日期：
+            <div class="layui-input-inline">
+                <input type="text" id="st" class="layui-input date" placeholder="yyyy-MM-dd" style="width:120px" />
+            </div>
+            至
+            <div class="layui-input-inline">
+                <input type="text" id="et" class="layui-input date" placeholder="yyyy-MM-dd" style="width:120px" />
+            </div>
+            投诉单号：
+            <div class="layui-input-inline" style="width:120px">
+                <input type="text" id="ComplaintID" class="layui-input" style="width:120px" />
+            </div>
+            产品类型：
+            <div class="layui-input-inline" style="width:120px">
+                <input type="text" id="ComplainProduct" class="layui-input" style="width:120px" />
+            </div>
+            受理号码：
+            <div class="layui-input-inline" style="width:120px">
+                <input type="text" id="ComplaintNum" class="layui-input" style="width:120px" />
+            </div>
+            投诉取消：
+            <div class="layui-input-inline" style="width:120px">
+                <select name="Cancel" id="Cancel">
+                    <option value="">全部</option>
+                    <option value="1">只投诉不取消</option>
+                    <option value="2">投诉后取消</option>
+                    <option value="3">投诉后取消（话务员责任）</option>
+                </select>
+            </div>
+            <a class="layui-btn search_btn" data-type="reload">搜索</a>
+        </div>
+     @if (ViewData["Mange"].ToString() == "true")
+        {  
+           <div class="layui-inline">
+            <a class="layui-btn layui-btn-normal addNews_btn">上传导入</a>
+        </div>
+        <div class="layui-inline">
+            <a class="layui-btn layui-btn-warm  down_btn">数据导出</a>
+        </div>
+        <div class="layui-inline">
+            <a class="layui-btn layui-btn-danger layui-btn-normal delAll_btn">批量删除</a>
+        </div>
+     }
+    </blockquote>
+</form>
+<table id="dataList" lay-filter="dataList"></table>
+
+<form id="form2" class="layui-form layui-form-pane1 pzjzsj" lay-filter="form2" action="" style="display: none; margin: 10px;">
+
+    <div class="layui-upload">
+        <button type="button" class="layui-btn layui-btn-normal" id="testList">选择文件</button>
+        <button type="button" class="layui-btn" id="testListAction">开始上传数据</button>
+        <a href="/upload/temp/模板_投诉清单明细.xls">下载模板《投诉清单明细.xls》</a>
+        <div class="layui-upload-list">
+            <table class="layui-table">
+                <thead>
+                    <tr>
+                        <th>文件名</th>
+                        <th>大小</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="demoList"></tbody>
+            </table>
+        </div>
+       
+    </div>
+</form>
+
+@section foot{
+    <script type="text/javascript">
+        var util;
+        var re = false;
+        layui.use(['form', 'layer', 'table', 'laytpl', 'laydate', 'util', 'upload'], function () {
+            var form = layui.form,
+                layer = parent.layer === undefined ? layui.layer : top.layer,
+                $ = layui.jquery,
+                laytpl = layui.laytpl,
+                table = layui.table, upload = layui.upload;
+            util = layui.util;
+            lay('.date').each(function () {
+                layui.laydate.render({
+                    elem: this
+                  , trigger: 'click'
+                });
+            });
+            //多文件列表示例
+            var demoListView = $('#demoList')
+              , uploadListIns = upload.render({
+                elem: '#testList'
+              , url: '/api/fileupload.ashx'
+              , accept: "file"
+              , exts: 'xls|xlsx'
+              , auto: false
+              , bindAction: '#testListAction'
+              , choose: function (obj) {
+                  re = false;
+                  var files = this.files = obj.pushFile(); //将每次选择的文件追加到文件队列
+                  //读取本地文件
+                  obj.preview(function (index, file, result) {
+                      var tr = $(['<tr id="upload-' + index + '">'
+                        , '<td>' + file.name + '</td>'
+                        , '<td>' + (file.size / 1014).toFixed(1) + 'kb</td>'
+                        , '<td>等待上传</td>'
+                        , '<td>'
+                        , '<button class="layui-btn layui-btn-mini demo-reload layui-hide">重传</button>'
+                        , '<button class="layui-btn layui-btn-mini layui-btn-danger demo-delete">删除</button>'
+                        , '<a class="layui-btn layui-btn-mini demo-down layui-hide">下载</a>'
+                        , '</td>'
+                      , '</tr>'].join(''));
+
+                      //单个重传
+                      tr.find('.demo-reload').on('click', function () {
+                          obj.upload(index, file);
+                      });
+
+                      //删除
+                      tr.find('.demo-delete').on('click', function () {
+                          delete files[index]; //删除对应的文件
+                          tr.remove();
+                          uploadListIns.config.elem.next()[0].value = ''; //清空 input file 值，以免删除后出现同名文件不可选
+                      });
+
+                      demoListView.append(tr);
+                  });
+              }
+              , done: function (res, index, upload) {
+                  if (res.Code == 1) { //上传成功
+                      var tr = demoListView.find('tr#upload-' + index)
+                      , tds = tr.children();
+                      var name = tds.eq(0).text();
+                      tds.eq(0).html("<a style='color: #1E9FFF' href='" + res.Data + "'>" + name + "</a>");
+                      tds.eq(2).html('<span style="color: #5FB878;">上传成功，数据导入中...</span>');
+                      $.ajax({
+                          url: "/Order/ComplaintImport", //后台处理程序
+                          type: "GET", //数据发送方式
+                          dataType: "json", //接受数据格式   
+                          data: { 
+                              filepath: res.Data 
+                          },
+                          success: function (r) {
+                              if (!r.result) {
+                                  tds.eq(3).find('.demo-reload').removeClass('layui-hide'); //显示重传 
+                              }
+                              else {
+                                  tds.eq(3).find('.demo-delete').addClass('layui-hide'); re = true; 
+                              }
+                              tds.eq(3).find('.demo-down').removeClass('layui-hide');
+                              tds.eq(3).find('.demo-down').attr("href", res.Data);
+                              tds.eq(2).html('<span style="color: #5FB878;">' + r.data + '</span>');
+                          },
+                          beforeSend: function () {
+                              $('#warning').text('正在处理，请稍等！');
+                          },
+                          complete: function () {
+                              $('#warning').text('');
+                          }
+                      });
+                      return delete this.files[index]; //删除文件队列已经上传成功的文件
+                  }
+                  this.error(index, upload);
+              }
+              , error: function (index, upload) {
+                  var tr = demoListView.find('tr#upload-' + index)
+                  , tds = tr.children();
+                  tds.eq(2).html('<span style="color: #FF5722;">上传失败</span>');
+                  tds.eq(3).find('.demo-reload').removeClass('layui-hide'); //显示重传
+              }
+            });
+            //用户列表
+            var tableIns = table.render({
+                elem: '#dataList',
+                url: '/Order/ComplaintInfo',
+                cellMinWidth: 95,
+                page: true,
+                height: "full-105",
+                limits: [10, 15, 20, 25],
+                limit: 15,
+                id: "ListTable",
+                cols: [[
+                    { type: "checkbox", fixed: "left", width: 50 },
+                    { field: 'ComplaintID', title: '投诉单号', width: 200, align: "center" },
+                    { field: 'ComplainProduct', title: '产品类型', width: 180, align: "center" },
+                    { field: 'ComplaintNum', title: '受理号码', width: 180, align: "center" },
+                    { field: 'ComplainPhone', title: '联系电话', width: 180, align: "center" },
+                    { field: 'ComplainInfo', title: '投诉原因', minWidth: 200, align: "center" },
+                    { field: 'ComplainDate', title: '办理日期', width: 150, align: "center", templet: function (d) { return time2date(d.ComplainDate); } },
+                    { field: 'ComplainUser', title: '办理人', width: 150, align: "center" },
+                    { field: 'Cancel', title: '投诉取消', width: 150, align: "center", templet: function (d) { return $("#Cancel option[value='" + d.Cancel + "']").text(); } },
+                    { field: 'Refund', title: '退费', width: 150, align: "center" }
+                ]],
+                done: function (res, curr, count) {
+                    $.each(res.data, function (index) {
+                        if (res.data[index].Status == 0) {
+                            $('tr[data-index="' + index + '"]').css('background-color', "#f2f2f2");
+                            //  $('tr[data-index="' + index + '"]').before("<div style='position:absolute;width:100%;padding-top: 18px;'><div style='outline:#ccc solid 1px;outline-style:dashed; width:96%;'></div></div>");
+                            $('tr[data-index="' + index + '"] .layui-table-cell').css('text-decoration', "line-through");
+                        }
+                    })
+                }
+            }); 
+            $(".search_btn").on("click", function () {
+                tableIns.reload({
+                    page: {
+                        curr: 1 //重新从第 1 页开始
+                    },
+                    where: {
+                        st: $("#st").val(),
+                        et: $("#et").val(),
+                        cid: $("#ComplaintID").val(),
+                        cpro: $("#ComplainProduct").val(),
+                        cnum: $("#ComplaintNum").val(),
+                        cancel: $("#Cancel").val()
+                    }
+                })
+            }); 
+            $(".down_btn").on("click", function () {
+                layer.msg('数据正在整理导出中...', {
+                    icon: 16, shade: 0.3, time: 2000000
+                });
+                var post = {
+                    st: $("#st").val(),
+                    et: $("#et").val(),
+                    cid: $("#ComplaintID").val(),
+                    cpro: $("#ComplainProduct").val(),
+                    cnum: $("#ComplaintNum").val(),
+                    cancel: $("#Cancel").val()
+                }
+                $.post("/Order/ComplaintToTable",   post, function (r) {
+                    if (r.result) {
+                        layer.closeAll(); 
+                        location.href = r.data;
+                    }
+                    else {
+                        layer.msg(r.data, {
+                            time: 2000//自动关闭
+                        });
+                    }
+                },"json");
+            }); 
+            $("body").delegate(".layui-layer-close", 'click', function () {
+                if (re) $(".search_btn").click();
+            }); 
+             
+            function addUser(edit) {
+                var title = "选择投诉清单进行上传";
+                $("#demoList tr").remove();
+                var index = layui.layer.open({
+                    title: title,
+                    type: 1,
+                    offset: '20%',
+                    area: ['800px', '400px'], //宽高
+                    content: $("#form2"),
+                    success: function (layero, index) {
+                        var body = $('#form2');
+                        body.find("input[type='text']").val(""); 
+                        if (edit) {
+                            
+                        }
+                        form.render();
+                        setTimeout(function () {
+                            layui.layer.tips('点击此处返回', '.layui-layer-setwin .layui-layer-close', {
+                                tips: 3
+                            });
+                        }, 500)
+                    }
+                })
+            }
+            function tablereload() {
+                $(".layui-laypage-btn").click();
+            }
+          
+            $(".addNews_btn").click(function () {
+                addUser();
+            })
+            $(".delAll_btn").click(function () {
+                var checkStatus = table.checkStatus('ListTable'),
+                    data = checkStatus.data,
+                    ids = [];
+                if (data.length > 0) {
+                    for (var i in data) {
+                        if (data[i].ID && data[i].ID != "") {
+                            ids.push(data[i].ID);
+                        }
+                    }
+                    layer.confirm('对选中的投诉内容进行删除？', { icon: 3, title: '提示信息' }, function (index) {
+                        $.post("/Order/Complaintdel", { ids: ids.join(",") }, function (data) {
+                            if (data == "OK") {
+                                layer.closeAll();
+                                layer.msg("删除成功！", {
+                                    time: 1000//自动关闭
+                                });
+                                tablereload();
+                            }
+                            else {
+                                layer.msg(data, {
+                                    time: 2000//自动关闭
+                                });
+                            }
+                        });
+                    })
+                } else {
+                    layer.msg("请选择投诉内容后再操作");
+                }
+            })
+
+        })
+        function time2date(t) {
+            if (t && util) {
+                var r = util.toDateString(t, 'yyyy-MM-dd');
+                if (r.indexOf("NaN") != -1) {
+                    r = t.toString().substr(0, 10);
+                }
+                return r;
+            }
+            else { return ""; }
+        }
+    </script>
+}
+
+
+
+
